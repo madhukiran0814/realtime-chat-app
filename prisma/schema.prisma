@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+model User {
+  id        String   @id // Clerk user ID
+  username  String   @unique
+  email     String   @unique
+  firstName String?  @map("first_name")
+  lastName  String?  @map("last_name")
+  avatarUrl String?  @map("avatar_url")
+  active    Boolean  @default(true)
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  isOnline  Boolean  @default(false) @map("is_online")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships  ChatMember[]
+  messages     Message[]
+  messageReads MessageRead[]
+  presence     Presence[]
+
+  @@map("users")
+}
+
+// ─── Chats ───────────────────────────────────────────────────────────────────
+enum ChatType {
+  DIRECT
+  GROUP
+  CHANNEL
+}
+
+model Chat {
+  id        String   @id @default(uuid())
+  type      ChatType @default(DIRECT)
+  name      String?  // null for direct chats
+  avatarUrl String?  @map("avatar_url")
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members  ChatMember[]
+  messages Message[]
+
+  @@map("chats")
+}
+
+// ─── Chat Members ────────────────────────────────────────────────────────────
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model ChatMember {
+  id            String     @id @default(uuid())
+  chatId        String     @map("chat_id")
+  userId        String     @map("user_id")
+  role          MemberRole @default(MEMBER)
+  joinedAt      DateTime   @default(now()) @map("joined_at")
+  lastReadAt    DateTime?  @map("last_read_at")
+  lastReadMsgId String?    @map("last_read_msg_id")
+  isMuted       Boolean    @default(false) @map("is_muted")
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+  @@index([userId])
+  @@index([chatId])
+  @@map("chat_members")
+}
+
+// ─── Messages ────────────────────────────────────────────────────────────────
+enum MessageStatus {
+  SENT
+  DELIVERED
+  SEEN
+}
+
+model Message {
+  id        String        @id @default(uuid())
+  chatId    String        @map("chat_id")
+  senderId  String        @map("sender_id")
+  content   String
+  replyToId String?       @map("reply_to_id")
+  status    MessageStatus @default(SENT)
+  editedAt  DateTime?     @map("edited_at")
+  deletedAt DateTime?     @map("deleted_at")
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  chat    Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender  User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo Message?      @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies Message[]     @relation("MessageReplies")
+  reads   MessageRead[]
+
+  @@index([chatId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+// ─── Message Reads (for delivery/seen receipts) ─────────────────────────────
+model MessageRead {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  readAt    DateTime @default(now()) @map("read_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("message_reads")
+}
+
+// ─── Presence (per device/tab connection tracking) ──────────────────────────
+model Presence {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  connectionId String   @unique @map("connection_id")
+  isOnline     Boolean  @default(true) @map("is_online")
+  lastPing     DateTime @default(now()) @map("last_ping")
+  userAgent    String?  @map("user_agent")
+  connectedAt  DateTime @default(now()) @map("connected_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("presence")
+}

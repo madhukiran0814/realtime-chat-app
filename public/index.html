@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat App</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; }
+
+    /* Header */
+    .header { background: #1e293b; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; }
+    .header h1 { font-size: 18px; color: #38bdf8; }
+    .header .right { display: flex; align-items: center; gap: 12px; }
+    .header .status { font-size: 12px; padding: 4px 10px; border-radius: 12px; }
+    .status.connected { background: #166534; color: #86efac; }
+    .status.disconnected { background: #991b1b; color: #fca5a5; }
+    .user-info { font-size: 13px; color: #94a3b8; }
+    .btn-sign-out { background: #334155; color: #e2e8f0; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-sign-out:hover { background: #475569; }
+
+    /* Layout */
+    .app { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { width: 280px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; }
+    .sidebar h2 { padding: 16px; font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .chat-list { flex: 1; overflow-y: auto; }
+    .chat-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #334155; transition: background 0.15s; }
+    .chat-item:hover { background: #334155; }
+    .chat-item.active { background: #0ea5e9; color: white; }
+    .chat-item .name { font-weight: 600; font-size: 14px; }
+    .chat-item .preview { font-size: 12px; color: #94a3b8; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chat-item.active .preview { color: #bae6fd; }
+    .unread-badge { background: #0ea5e9; color: white; font-size: 11px; padding: 2px 7px; border-radius: 10px; float: right; }
+
+    /* Chat area */
+    .chat-area { flex: 1; display: flex; flex-direction: column; }
+    .chat-header { background: #1e293b; padding: 12px 20px; border-bottom: 1px solid #334155; }
+    .chat-header .chat-name { font-weight: 600; }
+    .chat-header .chat-status { font-size: 12px; color: #94a3b8; }
+
+    .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+    .message { max-width: 70%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.4; }
+    .message.sent { align-self: flex-end; background: #0ea5e9; color: white; border-bottom-right-radius: 4px; }
+    .message.received { align-self: flex-start; background: #334155; border-bottom-left-radius: 4px; }
+    .message .sender { font-size: 11px; font-weight: 600; color: #38bdf8; margin-bottom: 4px; }
+    .message.sent .sender { color: #bae6fd; }
+    .message .meta { font-size: 10px; color: rgba(255,255,255,0.5); text-align: right; margin-top: 4px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+    .message .ticks { display: inline-flex; align-items: center; margin-left: 2px; }
+    .message .ticks svg { width: 16px; height: 12px; }
+    .tick-sent { color: rgba(255,255,255,0.5); }
+    .tick-delivered { color: rgba(255,255,255,0.7); }
+    .tick-seen { color: #34d399; }
+    .message .reply-ref { font-size: 11px; background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 6px; margin-bottom: 6px; border-left: 2px solid #38bdf8; }
+
+    /* Context menu for messages */
+    .message { position: relative; }
+    .msg-context-menu { position: fixed; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 4px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 200; min-width: 140px; }
+    .msg-context-menu button { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; color: #e2e8f0; padding: 8px 14px; cursor: pointer; font-size: 13px; text-align: left; }
+    .msg-context-menu button:hover { background: #334155; }
+
+    /* Reply preview bar */
+    .reply-bar { background: #1e293b; border-top: 1px solid #334155; padding: 8px 20px; display: flex; align-items: center; gap: 10px; }
+    .reply-bar .reply-preview { flex: 1; background: #0f172a; border-left: 3px solid #0ea5e9; padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+    .reply-bar .reply-preview .reply-author { font-size: 11px; font-weight: 600; color: #0ea5e9; }
+    .reply-bar .reply-preview .reply-text { color: #94a3b8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .reply-bar .reply-close { background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 4px 8px; }
+    .reply-bar .reply-close:hover { color: #e2e8f0; }
+
+    .typing-indicator { padding: 4px 20px; font-size: 12px; color: #94a3b8; min-height: 20px; }
+
+    /* Input area */
+    .input-area { background: #1e293b; padding: 16px 20px; border-top: 1px solid #334155; display: flex; gap: 8px; align-items: center; }
+    .input-area input { flex: 1; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; color: #e2e8f0; font-size: 14px; outline: none; }
+    .input-area input:focus { border-color: #0ea5e9; }
+    .input-area button { background: #0ea5e9; color: white; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .input-area button:hover { background: #0284c7; }
+    .emoji-btn { background: none !important; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; padding: 4px 6px; border-radius: 6px; line-height: 1; }
+    .emoji-btn:hover { background: #334155 !important; color: #e2e8f0; }
+
+    /* Emoji picker */
+    .emoji-picker { display: none; position: absolute; bottom: 70px; right: 20px; background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 10px; width: 320px; max-height: 250px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100; }
+    .emoji-picker.open { display: block; }
+    .emoji-picker .emoji-category { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 4px; }
+    .emoji-picker .emoji-category:first-child { margin-top: 0; }
+    .emoji-grid { display: flex; flex-wrap: wrap; gap: 2px; }
+    .emoji-grid span { font-size: 22px; cursor: pointer; padding: 4px; border-radius: 6px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
+    .emoji-grid span:hover { background: #334155; }
+
+    /* Auth screen */
+    .auth-screen { display: flex; align-items: center; justify-content: center; flex: 1; flex-direction: column; gap: 20px; }
+    .auth-screen h2 { color: #38bdf8; font-size: 24px; }
+    .auth-screen p { color: #94a3b8; font-size: 14px; }
+    .auth-loading { color: #94a3b8; font-size: 16px; display: flex; align-items: center; justify-content: center; height: 100vh; }
+
+    .load-more-indicator { text-align: center; padding: 10px; font-size: 12px; color: #64748b; }
+
+    .hidden { display: none !important; }
+    .empty-state { display: flex; align-items: center; justify-content: center; flex: 1; color: #64748b; font-size: 16px; }
+  </style>
+</head>
+<body>
+
+  <!-- Loading state -->
+  <div id="loading" class="auth-loading">Loading...</div>
+
+  <!-- Auth screen (Clerk sign-in mounts here) -->
+  <div id="authScreen" class="auth-screen hidden">
+    <h2>Chat App</h2>
+    <p>Sign in to start chatting</p>
+    <button id="clerk-sign-in-btn" style="margin-top:16px; background:#0ea5e9; color:white; border:none; border-radius:8px; padding:14px 40px; cursor:pointer; font-size:16px; font-weight:600;">Sign In</button>
+  </div>
+
+  <!-- Main App (shown after sign-in) -->
+  <div id="app" class="hidden">
+    <div class="header">
+      <h1>Chat App</h1>
+      <div class="right">
+        <span id="connStatus" class="status disconnected">Connecting...</span>
+        <span class="user-info" id="userLabel"></span>
+        <button class="btn-sign-out" onclick="signOut()">Sign Out</button>
+      </div>
+    </div>
+    <div class="app">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <h2>Chats</h2>
+        <div id="chatList" class="chat-list"></div>
+        <div style="padding:12px;">
+          <button onclick="showNewChatDialog()" style="width:100%; background:#334155; border:none; color:#e2e8f0; padding:10px; border-radius:8px; cursor:pointer;">+ New Chat</button>
+        </div>
+      </div>
+
+      <!-- Chat Area -->
+      <div class="chat-area">
+        <div id="chatEmpty" class="empty-state">Select a chat to start messaging</div>
+
+        <div id="chatView" class="hidden" style="display:flex;flex-direction:column;flex:1;">
+          <div class="chat-header">
+            <div class="chat-name" id="chatName"></div>
+            <div class="chat-status" id="chatStatusText"></div>
+          </div>
+          <div id="messages" class="messages"></div>
+          <div id="typingIndicator" class="typing-indicator"></div>
+          <div id="replyBar" class="reply-bar hidden">
+            <div class="reply-preview">
+              <div class="reply-author" id="replyAuthor"></div>
+              <div class="reply-text" id="replyText"></div>
+            </div>
+            <button class="reply-close" onclick="cancelReply()">&times;</button>
+          </div>
+          <div style="position:relative;">
+            <div id="emojiPicker" class="emoji-picker"></div>
+            <div class="input-area">
+              <button class="emoji-btn" onclick="toggleEmojiPicker()" title="Emoji">😊</button>
+              <input type="text" id="messageInput" placeholder="Type a message..." onkeydown="handleKeyDown(event)" oninput="handleTypingInput()" />
+              <button onclick="sendMessage()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ─── State ───────────────────────────────────────────────────────
+    let ws = null;
+    let token = '';
+    let userId = '';
+    let username = '';
+    let currentChatId = null;
+    let chats = {};
+    let messagesByChat = {};
+    let typingUsers = {};
+    let reconnectTimer = null;
+    let typingTimer = null;
+    let lastDisconnectTime = null;
+    let clerkInstance = null;
+    let replyingTo = null; // { id, senderId, senderName, content }
+    let chatCursors = {};  // chatId → { nextCursor, hasMore, loading }
+    const MSG_PAGE_SIZE = 30;
+
+    // ─── Initialize: fetch key first, then load Clerk ────────────────
+    async function initApp() {
+      try {
+        // 1. Fetch the publishable key from our backend
+        const config = await fetch('/api/config').then(r => r.json());
+
+        if (!config.clerkPublishableKey) {
+          document.getElementById('loading').textContent = 'Error: CLERK_PUBLISHABLE_KEY not set in .env';
+          return;
+        }
+
+        // 2. Dynamically load the Clerk script with the key
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js';
+          script.crossOrigin = 'anonymous';
+          script.dataset.clerkPublishableKey = config.clerkPublishableKey;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+
+        // 3. Wait for Clerk to be ready (load with UI components)
+        await window.Clerk.load({
+          routerPush: (to) => window.location.href = to,
+          routerReplace: (to) => window.location.replace(to),
+        });
+        clerkInstance = window.Clerk;
+
+        if (clerkInstance.user) {
+          await onSignedIn();
+        } else {
+          // Show sign-in UI
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('authScreen').classList.remove('hidden');
+
+          // Use Clerk's redirect-based sign-in (no UI components needed)
+          document.getElementById('clerk-sign-in-btn').onclick = () => {
+            clerkInstance.redirectToSignIn({
+              redirectUrl: window.location.href,
+            });
+          };
+        }
+      } catch (err) {
+        console.error('Init error:', err);
+        document.getElementById('loading').textContent = 'Error initializing: ' + err.message;
+      }
+    }
+
+    async function onSignedIn() {
+      const user = clerkInstance.user;
+      userId = user.id;
+      username = user.username || user.firstName || 'User';
+
+      // Get session token
+      token = await clerkInstance.session?.getToken();
+
+      // Sync user to our backend
+      try {
+        await apiFetch('/api/users/sync', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: user.username || user.firstName || user.id,
+            email: user.primaryEmailAddress?.emailAddress || `${user.id}@placeholder.local`,
+            avatarUrl: user.imageUrl,
+          }),
+        });
+      } catch (err) {
+        console.error('User sync error:', err);
+      }
+
+      // Show app
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      document.getElementById('userLabel').textContent = username;
+
+      // Connect WebSocket
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      initWebSocket(`${wsProtocol}//${window.location.host}/ws`);
+
+      // Refresh token periodically (Clerk tokens expire ~60s)
+      setInterval(async () => {
+        try {
+          token = await clerkInstance.session?.getToken();
+        } catch {}
+      }, 50000);
+    }
+
+    async function signOut() {
+      if (ws) ws.close();
+      await clerkInstance.signOut();
+      window.location.reload();
+    }
+
+    // ─── WebSocket ───────────────────────────────────────────────────
+    function initWebSocket(url) {
+      if (ws) { ws.close(); ws = null; }
+
+      const wsUrl = `${url}?token=${encodeURIComponent(token)}`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        setStatus(true);
+        console.log('[WS] Connected');
+        if (lastDisconnectTime) {
+          ws.send(JSON.stringify({ type: 'sync:request', payload: { since: lastDisconnectTime } }));
+          lastDisconnectTime = null;
+        }
+        fetchChats();
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleServerMessage(msg);
+      };
+
+      ws.onclose = (event) => {
+        setStatus(false);
+        lastDisconnectTime = new Date().toISOString();
+        console.log('[WS] Disconnected:', event.code, event.reason);
+        if (event.code !== 4001) {
+          reconnectTimer = setTimeout(async () => {
+            // Refresh token before reconnecting
+            try { token = await clerkInstance.session?.getToken(); } catch {}
+            console.log('[WS] Reconnecting...');
+            initWebSocket(url);
+          }, 3000);
+        }
+      };
+
+      ws.onerror = (err) => console.error('[WS] Error:', err);
+    }
+
+    function setStatus(connected) {
+      const el = document.getElementById('connStatus');
+      el.textContent = connected ? 'Connected' : 'Disconnected';
+      el.className = `status ${connected ? 'connected' : 'disconnected'}`;
+    }
+
+    // ─── Server message handler ──────────────────────────────────────
+    function handleServerMessage(msg) {
+      switch (msg.type) {
+        case 'connected':
+          userId = msg.payload.userId;
+          break;
+        case 'message:new':
+          addMessage(msg.payload);
+          break;
+        case 'message:ack':
+          handleMessageAck(msg.payload);
+          break;
+        case 'message:delivered':
+          handleMessageDelivered(msg.payload);
+          break;
+        case 'message:seen':
+          handleMessageSeen(msg.payload);
+          break;
+        case 'message:typing_indicator':
+          handleTypingIndicator(msg.payload);
+          break;
+        case 'presence:update':
+          handlePresenceUpdate(msg.payload);
+          break;
+        case 'sync:messages':
+          for (const m of msg.payload.messages) addMessage(m, true);
+          break;
+        case 'error':
+          console.error('[ERROR]', msg.payload.message);
+          break;
+        default:
+          console.log('[MSG]', msg);
+      }
+    }
+
+    // ─── REST helpers ────────────────────────────────────────────────
+    async function apiFetch(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...options.headers,
+        },
+      });
+      return res.json();
+    }
+
+    async function fetchChats() {
+      const data = await apiFetch('/api/chats');
+      if (Array.isArray(data)) {
+        for (const chat of data) chats[chat.id] = chat;
+        renderChatList();
+      }
+    }
+
+    async function fetchMessages(chatId, loadOlder = false) {
+      const cursor = loadOlder ? chatCursors[chatId]?.nextCursor : null;
+      if (loadOlder && (!chatCursors[chatId]?.hasMore || chatCursors[chatId]?.loading)) return;
+
+      if (!chatCursors[chatId]) chatCursors[chatId] = { nextCursor: null, hasMore: true, loading: false };
+      chatCursors[chatId].loading = true;
+
+      const url = `/api/chats/${chatId}/messages?limit=${MSG_PAGE_SIZE}${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`;
+      const data = await apiFetch(url);
+      chatCursors[chatId].loading = false;
+
+      if (data.messages) {
+        // Set status based on read receipts
+        let lastUnreadReceivedId = null;
+        for (const msg of data.messages) {
+          if (msg.senderId === userId) {
+            if (msg.reads && msg.reads.length > 0) {
+              msg.status = 'seen';
+            } else if (msg.status === 'DELIVERED') {
+              msg.status = 'delivered';
+            } else if (msg.status === 'SEEN') {
+              msg.status = 'seen';
+            } else {
+              msg.status = 'sent';
+            }
+          } else {
+            lastUnreadReceivedId = msg.id;
+          }
+        }
+
+        chatCursors[chatId].nextCursor = data.nextCursor;
+        chatCursors[chatId].hasMore = data.hasMore;
+
+        if (loadOlder) {
+          // Prepend older messages
+          messagesByChat[chatId] = [...data.messages, ...(messagesByChat[chatId] || [])];
+          renderMessagesPrepend(data.messages.length);
+        } else {
+          // Initial load — replace
+          messagesByChat[chatId] = data.messages;
+          renderMessages();
+        }
+
+        // Mark as read on initial load
+        if (!loadOlder && lastUnreadReceivedId && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'message:read',
+            payload: { chatId, messageId: lastUnreadReceivedId }
+          }));
+          if (chats[chatId]) {
+            chats[chatId].unreadCount = 0;
+            renderChatList();
+          }
+        }
+      }
+    }
+
+    // ─── Rendering ──────────────────────────────────────────────────
+    function renderChatList() {
+      const list = document.getElementById('chatList');
+      list.innerHTML = '';
+      for (const chat of Object.values(chats)) {
+        const el = document.createElement('div');
+        el.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
+        el.onclick = () => selectChat(chat.id);
+
+        const chatName = chat.type === 'DIRECT'
+          ? chat.members.filter(m => m.userId !== userId).map(m => m.user.username).join(', ') || 'Direct Chat'
+          : chat.name || 'Group Chat';
+
+        const preview = chat.lastMessage ? chat.lastMessage.content : 'No messages yet';
+        const unread = chat.unreadCount > 0 ? `<span class="unread-badge">${chat.unreadCount}</span>` : '';
+
+        el.innerHTML = `<div class="name">${escapeHtml(chatName)} ${unread}</div><div class="preview">${escapeHtml(preview)}</div>`;
+        list.appendChild(el);
+      }
+    }
+
+    function selectChat(chatId) {
+      currentChatId = chatId;
+      chatCursors[chatId] = { nextCursor: null, hasMore: true, loading: false };
+      messagesByChat[chatId] = [];
+      document.getElementById('chatEmpty').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('chatView').style.display = 'flex';
+
+      const chat = chats[chatId];
+      const chatName = chat.type === 'DIRECT'
+        ? chat.members.filter(m => m.userId !== userId).map(m => m.user.username).join(', ')
+        : chat.name;
+      document.getElementById('chatName').textContent = chatName;
+
+      const otherMembers = chat.members.filter(m => m.userId !== userId);
+      const onlineCount = otherMembers.filter(m => m.user.isOnline).length;
+      document.getElementById('chatStatusText').textContent = getChatStatusText(chat, otherMembers, onlineCount);
+
+      fetchMessages(chatId);
+      renderChatList();
+    }
+
+    function buildMessageEl(msg) {
+      const isSent = msg.senderId === userId;
+      const el = document.createElement('div');
+      el.className = `message ${isSent ? 'sent' : 'received'}`;
+      el.dataset.msgId = msg.id;
+
+      const senderName = msg.sender?.username || msg.senderId;
+
+      let html = '';
+      if (!isSent) html += `<div class="sender">${escapeHtml(senderName)}</div>`;
+      if (msg.replyTo) html += `<div class="reply-ref">${escapeHtml(msg.replyTo.sender?.username || '')}: ${escapeHtml(msg.replyTo.content?.substring(0, 50) || '')}</div>`;
+      html += `<div>${escapeHtml(msg.content)}</div>`;
+      html += `<div class="meta"><span>${new Date(msg.createdAt).toLocaleTimeString()}</span>${isSent ? getTickHtml(msg.status || 'sent') : ''}</div>`;
+
+      el.innerHTML = html;
+
+      // Right-click / long-press to reply
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showMessageContextMenu(e, msg.id, msg.senderId, senderName, msg.content);
+      });
+      let longPressTimer;
+      el.addEventListener('touchstart', (e) => {
+        longPressTimer = setTimeout(() => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          showMessageContextMenu({ clientX: touch.clientX, clientY: touch.clientY }, msg.id, msg.senderId, senderName, msg.content);
+        }, 500);
+      });
+      el.addEventListener('touchend', () => clearTimeout(longPressTimer));
+      el.addEventListener('touchmove', () => clearTimeout(longPressTimer));
+
+      return el;
+    }
+
+    function renderMessages() {
+      const container = document.getElementById('messages');
+      container.innerHTML = '';
+      const msgs = messagesByChat[currentChatId] || [];
+
+      // Show "load more" indicator if there are older messages
+      if (chatCursors[currentChatId]?.hasMore) {
+        const loader = document.createElement('div');
+        loader.className = 'load-more-indicator';
+        loader.id = 'loadMoreIndicator';
+        loader.textContent = 'Scroll up for older messages';
+        container.appendChild(loader);
+      }
+
+      for (const msg of msgs) {
+        container.appendChild(buildMessageEl(msg));
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function renderMessagesPrepend(count) {
+      const container = document.getElementById('messages');
+      const msgs = messagesByChat[currentChatId] || [];
+      const olderMsgs = msgs.slice(0, count);
+
+      // Save scroll position
+      const prevScrollHeight = container.scrollHeight;
+
+      // Remove old load-more indicator
+      const oldLoader = document.getElementById('loadMoreIndicator');
+      if (oldLoader) oldLoader.remove();
+
+      // Add new load-more indicator if still more
+      const firstChild = container.firstChild;
+      if (chatCursors[currentChatId]?.hasMore) {
+        const loader = document.createElement('div');
+        loader.className = 'load-more-indicator';
+        loader.id = 'loadMoreIndicator';
+        loader.textContent = 'Scroll up for older messages';
+        container.insertBefore(loader, firstChild);
+      }
+
+      // Prepend older messages after the indicator
+      const insertBefore = document.getElementById('loadMoreIndicator')?.nextSibling || container.firstChild;
+      for (const msg of olderMsgs) {
+        container.insertBefore(buildMessageEl(msg), insertBefore);
+      }
+
+      // Restore scroll position so it doesn't jump
+      container.scrollTop = container.scrollHeight - prevScrollHeight;
+    }
+
+    // Scroll-up listener to load older messages
+    function setupScrollListener() {
+      const container = document.getElementById('messages');
+      container.addEventListener('scroll', () => {
+        if (container.scrollTop < 80 && currentChatId) {
+          fetchMessages(currentChatId, true);
+        }
+      });
+    }
+
+    function getTickHtml(status) {
+      // Clock = sending, Single grey tick = sent, Double grey tick = delivered, Double green tick = seen
+      if (status === 'seen') {
+        return '<span class="ticks tick-seen" title="Seen"><svg viewBox="0 0 16 11"><path fill="currentColor" d="M11.07.66L5.64 6.08 3.72 4.15 2.3 5.56l3.34 3.35 6.85-6.84z"/><path fill="currentColor" d="M14.07.66L8.64 6.08 7.78 5.22 6.36 6.64l2.28 2.27 6.85-6.84z"/></svg></span>';
+      }
+      if (status === 'delivered') {
+        return '<span class="ticks tick-delivered" title="Delivered"><svg viewBox="0 0 16 11"><path fill="currentColor" d="M11.07.66L5.64 6.08 3.72 4.15 2.3 5.56l3.34 3.35 6.85-6.84z"/><path fill="currentColor" d="M14.07.66L8.64 6.08 7.78 5.22 6.36 6.64l2.28 2.27 6.85-6.84z"/></svg></span>';
+      }
+      if (status === 'sent') {
+        return '<span class="ticks tick-sent" title="Sent"><svg viewBox="0 0 16 11"><path fill="currentColor" d="M11.07.66L5.64 6.08 3.72 4.15 2.3 5.56l3.34 3.35 6.85-6.84z"/></svg></span>';
+      }
+      // sending (clock icon)
+      return '<span class="ticks tick-sent" title="Sending"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M8 5v3.5l2.5 1.5"/></svg></span>';
+    }
+
+    function addMessage(msg, isSynced = false) {
+      const chatId = msg.chatId;
+      if (!messagesByChat[chatId]) messagesByChat[chatId] = [];
+      if (messagesByChat[chatId].some(m => m.id === msg.id)) return;
+
+      messagesByChat[chatId].push(msg);
+
+      if (chats[chatId]) {
+        chats[chatId].lastMessage = msg;
+        if (chatId !== currentChatId) chats[chatId].unreadCount = (chats[chatId].unreadCount || 0) + 1;
+        renderChatList();
+      }
+
+      // For messages from others
+      if (msg.senderId !== userId && ws && ws.readyState === WebSocket.OPEN) {
+        if (chatId === currentChatId) {
+          // Chat is open → mark as read (seen)
+          renderMessages();
+          ws.send(JSON.stringify({ type: 'message:read', payload: { chatId, messageId: msg.id } }));
+        } else {
+          // Chat is NOT open → send delivery receipt only
+          ws.send(JSON.stringify({ type: 'message:confirm_delivery', payload: { chatId, messageId: msg.id } }));
+        }
+      } else if (chatId === currentChatId) {
+        renderMessages();
+      }
+    }
+
+    // ─── Typing ──────────────────────────────────────────────────────
+    function handleTypingIndicator(payload) {
+      const key = `${payload.chatId}:${payload.userId}`;
+      if (payload.isTyping) typingUsers[key] = true;
+      else delete typingUsers[key];
+
+      if (payload.chatId === currentChatId) {
+        const typingList = Object.keys(typingUsers)
+          .filter(k => k.startsWith(currentChatId))
+          .map(k => {
+            const uid = k.split(':')[1];
+            const member = chats[currentChatId]?.members.find(m => m.userId === uid);
+            return member?.user?.username || 'Someone';
+          });
+
+        document.getElementById('typingIndicator').textContent =
+          typingList.length > 0
+            ? `${typingList.join(', ')} ${typingList.length === 1 ? 'is' : 'are'} typing...`
+            : '';
+      }
+    }
+
+    function handleTypingInput() {
+      if (!currentChatId || !ws) return;
+      ws.send(JSON.stringify({ type: 'message:typing', payload: { chatId: currentChatId, isTyping: true } }));
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        ws.send(JSON.stringify({ type: 'message:typing', payload: { chatId: currentChatId, isTyping: false } }));
+      }, 2000);
+    }
+
+    // ─── Send message ────────────────────────────────────────────────
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const content = input.value.trim();
+      if (!content || !currentChatId || !ws) return;
+
+      const clientMessageId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+      const payload = { chatId: currentChatId, content, clientMessageId };
+      if (replyingTo) payload.replyToId = replyingTo.id;
+
+      ws.send(JSON.stringify({ type: 'message:send', payload }));
+
+      const optimisticMsg = {
+        id: clientMessageId,
+        chatId: currentChatId,
+        senderId: userId,
+        content,
+        status: 'sending',
+        createdAt: new Date().toISOString(),
+        sender: { id: userId, username },
+      };
+      if (replyingTo) {
+        optimisticMsg.replyTo = {
+          id: replyingTo.id,
+          content: replyingTo.content,
+          sender: { username: replyingTo.senderName },
+        };
+      }
+      addMessage(optimisticMsg);
+
+      input.value = '';
+      cancelReply();
+      ws.send(JSON.stringify({ type: 'message:typing', payload: { chatId: currentChatId, isTyping: false } }));
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+
+    // ─── New chat dialog ─────────────────────────────────────────────
+    function showNewChatDialog() {
+      const targetUserId = prompt('Enter the user ID to start a direct chat with:');
+      if (!targetUserId) return;
+
+      apiFetch('/api/chats', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'DIRECT', memberIds: [targetUserId] }),
+      }).then(chat => {
+        if (chat.id) {
+          chats[chat.id] = { ...chat, unreadCount: 0, lastMessage: null };
+          renderChatList();
+          selectChat(chat.id);
+        } else {
+          alert('Error creating chat: ' + JSON.stringify(chat));
+        }
+      });
+    }
+
+    // ─── Presence handler ─────────────────────────────────────────
+    function handlePresenceUpdate(payload) {
+      // Update the member's online status in all chats they belong to
+      for (const chat of Object.values(chats)) {
+        const member = chat.members?.find(m => m.userId === payload.userId);
+        if (member) {
+          member.user.isOnline = payload.isOnline;
+          member.user.lastSeen = payload.lastSeen;
+        }
+      }
+
+      // Re-render chat list (to update previews)
+      renderChatList();
+
+      // Update chat header if we're viewing a chat with this user
+      if (currentChatId && chats[currentChatId]) {
+        const chat = chats[currentChatId];
+        const otherMembers = chat.members.filter(m => m.userId !== userId);
+        const onlineCount = otherMembers.filter(m => m.user.isOnline).length;
+        document.getElementById('chatStatusText').textContent = getChatStatusText(chat, otherMembers, onlineCount);
+      }
+    }
+
+    function getChatStatusText(chat, otherMembers, onlineCount) {
+      if (chat.type === 'DIRECT') {
+        const other = otherMembers[0];
+        if (!other) return '';
+        if (other.user.isOnline) return 'Online';
+        if (other.user.lastSeen) return 'Last seen ' + formatLastSeen(other.user.lastSeen);
+        return 'Offline';
+      }
+      return `${chat.members.length} members, ${onlineCount} online`;
+    }
+
+    function formatLastSeen(dateStr) {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    }
+
+    // ─── Message ACK handler (replace optimistic msg with real one) ──
+    function handleMessageAck(payload) {
+      for (const [chatId, msgs] of Object.entries(messagesByChat)) {
+        const idx = msgs.findIndex(m => m.id === payload.clientMessageId);
+        if (idx !== -1) {
+          msgs[idx].id = payload.messageId;
+          msgs[idx].createdAt = payload.createdAt;
+          msgs[idx].status = 'sent';
+          if (chatId === currentChatId) renderMessages();
+          break;
+        }
+      }
+    }
+
+    // ─── Delivered handler (double grey ticks) ──
+    function handleMessageDelivered(payload) {
+      const msgs = messagesByChat[payload.chatId];
+      if (!msgs) return;
+      const msg = msgs.find(m => m.id === payload.messageId);
+      if (msg && msg.senderId === userId) {
+        msg.status = 'delivered';
+        if (payload.chatId === currentChatId) renderMessages();
+      }
+    }
+
+    // ─── Seen handler (double green ticks) ──
+    function handleMessageSeen(payload) {
+      const msgs = messagesByChat[payload.chatId];
+      if (!msgs) return;
+      const msg = msgs.find(m => m.id === payload.messageId);
+      if (msg && msg.senderId === userId) {
+        msg.status = 'seen';
+        if (payload.chatId === currentChatId) renderMessages();
+      }
+    }
+
+    // ─── Message context menu ──────────────────────────────────────────
+    function showMessageContextMenu(e, msgId, senderId, senderName, content) {
+      closeContextMenu();
+      const menu = document.createElement('div');
+      menu.className = 'msg-context-menu';
+      menu.id = 'msgContextMenu';
+      menu.innerHTML = `
+        <button onclick="setReply('${msgId}', '${senderId}', '${escapeAttr(senderName)}', '${escapeAttr(content?.substring(0, 80) || '')}'); closeContextMenu();">↩ Reply</button>
+        <button onclick="copyMessageText('${escapeAttr(content || '')}'); closeContextMenu();">📋 Copy</button>
+      `;
+      document.body.appendChild(menu);
+
+      // Position near click
+      const x = Math.min(e.clientX, window.innerWidth - 160);
+      const y = Math.min(e.clientY, window.innerHeight - 80);
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+    }
+
+    function closeContextMenu() {
+      const existing = document.getElementById('msgContextMenu');
+      if (existing) existing.remove();
+    }
+
+    function copyMessageText(text) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+
+    // Close context menu on click anywhere
+    document.addEventListener('click', () => closeContextMenu());
+
+    // ─── Reply functions ─────────────────────────────────────────────
+    function setReply(msgId, senderId, senderName, content) {
+      replyingTo = { id: msgId, senderId, senderName, content };
+      document.getElementById('replyBar').classList.remove('hidden');
+      document.getElementById('replyAuthor').textContent = senderId === userId ? 'You' : senderName;
+      document.getElementById('replyText').textContent = content;
+      document.getElementById('messageInput').focus();
+    }
+
+    function cancelReply() {
+      replyingTo = null;
+      document.getElementById('replyBar').classList.add('hidden');
+    }
+
+    // ─── Emoji picker ─────────────────────────────────────────────────
+    const emojiData = {
+      'Smileys': ['😊','😂','🤣','😍','🥰','😘','😎','🤩','😇','🙂','😉','😋','🤗','🤔','🤫','🤭','😏','😌','😴','🥳','😜','😝','🤪','😡','😤','😭','😱','🥺','😳'],
+      'Gestures': ['👍','👎','👋','🤝','🙏','💪','👏','🤞','✌️','🤙','👊','✊','🫡','🫶','❤️','🔥','⭐','💯','✅','❌'],
+      'Objects': ['💬','📎','📷','🎉','🎊','🎁','📌','💡','🔔','⏰','📝','📁','🗑️','🔒','🔑','⚙️'],
+    };
+
+    function buildEmojiPicker() {
+      const picker = document.getElementById('emojiPicker');
+      let html = '';
+      for (const [category, emojis] of Object.entries(emojiData)) {
+        html += `<div class="emoji-category">${category}</div><div class="emoji-grid">`;
+        for (const emoji of emojis) {
+          html += `<span onclick="insertEmoji('${emoji}')">${emoji}</span>`;
+        }
+        html += '</div>';
+      }
+      picker.innerHTML = html;
+    }
+
+    function toggleEmojiPicker() {
+      const picker = document.getElementById('emojiPicker');
+      picker.classList.toggle('open');
+    }
+
+    function insertEmoji(emoji) {
+      const input = document.getElementById('messageInput');
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      input.value = input.value.substring(0, start) + emoji + input.value.substring(end);
+      input.selectionStart = input.selectionEnd = start + emoji.length;
+      input.focus();
+      document.getElementById('emojiPicker').classList.remove('open');
+    }
+
+    // Close emoji picker when clicking outside
+    document.addEventListener('click', (e) => {
+      const picker = document.getElementById('emojiPicker');
+      if (!picker) return;
+      if (!e.target.closest('.emoji-picker') && !e.target.closest('.emoji-btn')) {
+        picker.classList.remove('open');
+      }
+    });
+
+    // ─── Helpers ──────────────────────────────────────────────────────
+    function escapeAttr(text) {
+      return (text || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ─── Boot ────────────────────────────────────────────────────────
+    buildEmojiPicker();
+    setupScrollListener();
+    initApp();
+  </script>
+</body>
+</html>

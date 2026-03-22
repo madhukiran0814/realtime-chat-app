@@ -1,0 +1,107 @@
+I want to build a production-ready real-time chat application backend inspired by Tinode (https://github.com/tinode/chat).
+
+IMPORTANT CONSTRAINTS:
+- Do NOT use Supabase Realtime.
+- Do NOT use Kafka or heavy infrastructure.
+- Must be deployable for FREE (initially).
+- Must be easily portable (so I can later move off Supabase to my own server).
+- Use Supabase ONLY as a database (PostgreSQL).
+- Use Clerk for authentication.
+- Backend should handle realtime via WebSockets (NOT Supabase realtime).
+
+TECH STACK:
+- Backend: Node.js (preferably with Fastify or Express)
+- WebSocket: native ws or Socket.IO (prefer ws for simplicity)
+- Database: Supabase PostgreSQL (via direct connection using Prisma or Drizzle ORM)
+- Auth: Clerk (JWT verification in backend)
+- Optional caching: in-memory (no Redis initially)
+
+CORE FEATURES:
+
+1. Real-time Messaging:
+- Send and receive messages instantly via WebSockets
+- Ensure low latency and reliable delivery
+- Handle reconnection and message sync
+
+2. Message Features:
+- Reply to specific messages (threading or reply reference)
+- Message status: sent, delivered, seen
+- Store messages efficiently in DB
+
+3. Presence System:
+- Typing indicators (real-time)
+- Online/offline status
+- Last seen timestamp
+- Handle multiple tabs/devices per user
+
+4. Chat Types:
+- One-to-one chats
+- Group chats
+- Channels (broadcast-style optional)
+
+5. Group Management:
+- Create groups
+- Add/remove members
+- Roles (admin/member)
+
+6. Performance & Reliability:
+- Efficient DB schema design
+- Pagination for messages
+- Avoid over-fetching
+- Scalable WebSocket handling
+
+7. Sync System:
+- When user reconnects → fetch missed messages
+- Maintain message cursor or timestamp-based sync
+
+8. API + WebSocket Separation:
+- REST APIs for:
+  - chat creation
+  - group management
+  - message history
+- WebSocket for:
+  - real-time messaging
+  - typing
+  - presence updates
+
+9. Basic Frontend (for testing only):
+- Simple HTML + JS UI
+- Connect via WebSocket
+- Send/receive messages
+- Show typing indicator
+
+10. Security:
+- Verify Clerk JWT on connection
+- Authorize chat access
+- Prevent unauthorized message sending
+
+EXTRA UX FEATURES (important):
+- Unread message counts
+- Message timestamps
+- Optimistic UI handling
+- Retry on failure
+- Debounced typing events
+
+DATABASE DESIGN:
+Provide proper schema for:
+- users
+- chats
+- chat_members
+- messages
+- message_reads
+- presence
+
+OUTPUT EXPECTATION:
+- Full backend architecture
+- Folder structure
+- Database schema (SQL or ORM models)
+- WebSocket event design (event names + payloads)
+- Sample API endpoints
+- Minimal frontend to test
+- Deployment guide (free options like Railway/Render/Fly.io)
+
+Also explain:
+- How this architecture avoids vendor lock-in (Supabase independence)
+- How I can later scale this (Redis, pub/sub, horizontal scaling)
+
+Keep code clean, modular, and production-ready.
